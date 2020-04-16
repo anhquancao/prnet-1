@@ -420,6 +420,7 @@ class SVDHead(nn.Module):
         self.reflect[2, 2] = -1
         self.temperature = nn.Parameter(torch.ones(1)*0.5, requires_grad=True)
         self.my_iter = torch.ones(1)
+        self.on_gpu = args.svd_on_gpu
 
     def forward(self, *input):
         src_embedding = input[0]
@@ -449,21 +450,61 @@ class SVDHead(nn.Module):
 
         src_corr_centered = src_corr - src_corr.mean(dim=2, keepdim=True)
 
-        H = torch.matmul(src_centered, src_corr_centered.transpose(2, 1).contiguous()).cpu()
+        # S: Original
+        # H = torch.matmul(src_centered, src_corr_centered.transpose(2, 1).contiguous()).cpu()
 
-        R = []
+        # S: Debugging "illegal memory access" thing
+        # H = torch.matmul(src_centered, src_corr_centered.transpose(2, 1).contiguous()).to('cpu', copy=True)
 
-        for i in range(src.size(0)):
-            u, s, v = torch.svd(H[i])
-            r = torch.matmul(v, u.transpose(1, 0)).contiguous()
-            r_det = torch.det(r).item()
-            diag = torch.from_numpy(np.array([[1.0, 0, 0],
-                                              [0, 1.0, 0],
-                                              [0, 0, r_det]]).astype('float32')).to(v.device)
-            r = torch.matmul(torch.matmul(v, diag), u.transpose(1, 0)).contiguous()
-            R.append(r)
+        # S: This post might be worth looking into if the SVD issues persist.
+        # https://github.com/pytorch/pytorch/issues/28293
 
-        R = torch.stack(R, dim=0).cuda()
+
+
+        ## S: My implementation on GPU
+        if self.on_gpu:
+            H = torch.matmul(src_centered, src_corr_centered.transpose(2, 1).contiguous())
+            # print(H.shape)
+            R = torch.zeros((src.size(0), 3, 3)).cuda()
+            
+            for i in range(src.size(0)):
+                u, s, v = torch.svd(H[i])
+
+                r = torch.matmul(v, u.transpose(1, 0)).contiguous()
+                r_det = torch.det(r).item()
+                diag = torch.tensor([[1.0, 0, 0],
+                                    [0, 1.0, 0],
+                                    [0, 0, r_det]]).cuda()
+                r = torch.matmul(torch.matmul(v, diag), u.transpose(1, 0)).contiguous()
+                R[i] = r
+
+
+        else:
+            ## Original on CPU
+            H = torch.matmul(src_centered, src_corr_centered.transpose(2, 1).contiguous()).to('cpu', copy=True)
+            R = []
+
+            for i in range(src.size(0)):
+
+                ## S: Why is this done on the CPU anyways?  
+
+                # S: Trying to cirumvent ill-conditioned matrices as suggested by
+                # @jl626 in issue #2 on the github page.
+                # https://github.com/WangYueFt/prnet/issues/2#issuecomment-589436808
+
+                u, s, v = torch.svd(H[i] * torch.eye(3,) * 1e-7)
+
+                r = torch.matmul(v, u.transpose(1, 0)).contiguous()
+                r_det = torch.det(r).item()
+                diag = torch.from_numpy(np.array([[1.0, 0, 0],
+                                                [0, 1.0, 0],
+                                                [0, 0, r_det]]).astype('float32')).to(v.device)
+                r = torch.matmul(torch.matmul(v, diag), u.transpose(1, 0)).contiguous()
+                R.append(r)
+
+            R = torch.stack(R, dim=0).cuda()
+
+
 
         t = torch.matmul(-R, src.mean(dim=2, keepdim=True)) + src_corr.mean(dim=2, keepdim=True)
         if self.training:
@@ -493,6 +534,7 @@ class KeyPointNet(nn.Module):
 
         src_keypoints = torch.gather(src, dim=2, index=src_keypoints_idx)
         tgt_keypoints = torch.gather(tgt, dim=2, index=tgt_keypoints_idx)
+
         
         src_embedding = torch.gather(src_embedding, dim=2, index=src_embedding_idx)
         tgt_embedding = torch.gather(tgt_embedding, dim=2, index=tgt_embedding_idx)
@@ -580,8 +622,8 @@ class PRNet(nn.Module):
         self.feature_alignment_loss = args.feature_alignment_loss
         self.cycle_consistency_loss = args.cycle_consistency_loss
 
-        if self.model_path is not '':
-            self.load(self.model_path)
+        # if self.model_path is not '':
+        #     self.load(self.model_path)
         if torch.cuda.device_count() > 1:
             self.acpnet = nn.DataParallel(self.acpnet)
 
@@ -591,6 +633,9 @@ class PRNet(nn.Module):
 
     def predict(self, src, tgt, n_iters=3):
         batch_size = src.size(0)
+
+
+
         rotation_ab_pred = torch.eye(3, device=src.device, dtype=torch.float32).view(1, 3, 3).repeat(batch_size, 1, 1)
         translation_ab_pred = torch.zeros(3, device=src.device, dtype=torch.float32).view(1, 3).repeat(batch_size, 1)
         for i in range(n_iters):
@@ -827,6 +872,13 @@ class PRNet(nn.Module):
     def load(self, path):
         self.acpnet.load_state_dict(torch.load(path))
 
+    # S: My stuff
+    def get_state(self):
+        return self.acpnet.state_dict()
+
+    def set_state(self, state):
+        self.acpnet.load_state_dict(state)
+
 
 class Logger:
     def __init__(self, args):
@@ -835,11 +887,11 @@ class Logger:
         self.fw.write(str(args))
         self.fw.write('\n')
         self.fw.flush()
-        print(str(args))
+        # print(str(args))
         with open(os.path.join(self.path, 'args.txt'), 'w') as f:
             json.dump(args.__dict__, f, indent=2)
 
-    def write(self, info):
+    def write(self, info, write=True):
         arrow = info['arrow']
         epoch = info['epoch']
         stage = info['stage']
@@ -862,8 +914,9 @@ class Logger:
                (arrow, stage, epoch, loss, feature_alignment_loss, cycle_consistency_loss, scale_consensus_loss,
                 r_ab_mse, r_ab_rmse, r_ab_mae,
                 r_ab_r2_score, t_ab_mse, t_ab_rmse, t_ab_mae, t_ab_r2_score)
-        self.fw.write(text)
-        self.fw.flush()
+        if write:
+            self.fw.write(text)
+            self.fw.flush()
         print(text)
 
     def close(self):
