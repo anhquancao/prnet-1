@@ -492,7 +492,7 @@ class SVDHead(nn.Module):
                 # @jl626 in issue #2 on the github page.
                 # https://github.com/WangYueFt/prnet/issues/2#issuecomment-589436808
 
-                u, s, v = torch.svd(H[i] * torch.eye(3,) * 1e-7)
+                u, s, v = torch.svd(H[i] + torch.eye(3,) * 1e-7)
 
                 r = torch.matmul(v, u.transpose(1, 0)).contiguous()
                 r_det = torch.det(r).item()

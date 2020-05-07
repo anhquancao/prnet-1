@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 
-from __future__ import print_function
 import os
 import gc
 import argparse
@@ -14,6 +13,7 @@ from data import ModelNet40
 import numpy as np
 from torch.utils.data import DataLoader
 from model import PRNet
+
 
 
 def _init_(args):
@@ -179,7 +179,6 @@ def main():
 
     args = parser.parse_args()
     # torch.backends.cudnn.deterministic = True # Original
-    # torch.backends.cudnn.deterministic = True
     # torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.enabled = False
 
@@ -191,57 +190,78 @@ def main():
 
     _init_(args)
 
-    if args.dataset == 'modelnet40':
-        train_loader = DataLoader(ModelNet40(num_points=args.n_points,
-                                             num_subsampled_points=args.n_subsampled_points,
-                                             partition='train', gaussian_noise=args.gaussian_noise,
-                                             unseen=args.unseen, rot_factor=args.rot_factor),
-                                  batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=6)
-        test_loader = DataLoader(ModelNet40(num_points=args.n_points,
-                                            num_subsampled_points=args.n_subsampled_points,
-                                            partition='test', gaussian_noise=args.gaussian_noise,
-                                            unseen=args.unseen, rot_factor=args.rot_factor),
-                                 batch_size=args.test_batch_size, shuffle=False, drop_last=False, num_workers=6)
-    else:
-        raise Exception("not implemented")
-
-
     
 
-    print("hold")
+
+
     if args.model == 'prnet':
         net = PRNet(args).cuda()
-        if args.visualize:
-            net.eval()
-            with torch.no_grad():
-                if args.model_path is '':
-                    model_path = 'checkpoints' + '/' + args.exp_name + '/models/model.best.t7'
-                else:
-                    model_path = args.model_path
-                if not os.path.exists(model_path):
-                    print("can't find pretrained model")
-                    return
-                
-                state = torch.load(model_path)
-                net.set_state(state['model_state_dict'])
-                            
-                viz_loader = DataLoader(ModelNet40(num_points=args.n_points,
+    else:
+        raise Exception('Not implemented')
+
+    if not args.eval:
+        if args.dataset == 'modelnet40':
+            train_loader = DataLoader(ModelNet40(num_points=args.n_points,
+                                                num_subsampled_points=args.n_subsampled_points,
+                                                partition='train', gaussian_noise=args.gaussian_noise,
+                                                unseen=args.unseen, rot_factor=args.rot_factor),
+                                    batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=6)
+            test_loader = DataLoader(ModelNet40(num_points=args.n_points,
                                                 num_subsampled_points=args.n_subsampled_points,
                                                 partition='test', gaussian_noise=args.gaussian_noise,
                                                 unseen=args.unseen, rot_factor=args.rot_factor),
-                                    batch_size=1, shuffle=False, drop_last=False, num_workers=1)
+                                    batch_size=args.test_batch_size, shuffle=False, drop_last=False, num_workers=6)
+        else:
+            raise Exception("Dataset not implemented")
 
+        train(args, net, train_loader, test_loader)
+
+    # Testing 
+    # I've only implemented ModelNet40 so far.
+    # This will simply load a single sample from the dataset 
+    # and run net.predict()
+    if args.eval:
+        net.eval()
+        with torch.no_grad():
+            if args.model_path is '':
+                model_path = 'checkpoints' + '/' + args.exp_name + '/models/model.best.t7'
+            else:
+                model_path = args.model_path
+            if not os.path.exists(model_path):
+                print("Can't find pretrained model. Did you specify one with '--exp_name'?")
+                return
+
+            state = torch.load(model_path)
+            net.set_state(state['model_state_dict'])
+
+            dl = DataLoader(ModelNet40(num_points=args.n_points,
+                                            num_subsampled_points=args.n_subsampled_points,
+                                            partition='test', gaussian_noise=args.gaussian_noise,
+                                            unseen=args.unseen, rot_factor=args.rot_factor),
+                                batch_size=1, shuffle=False, drop_last=False, num_workers=1)
+
+            if args.visualize:
+                # If you try to import Open3D while running "Remote 
+                # Development" with VS Code I get an error. That's why I'm 
+                # importing it in the middle of the code like this... 
                 import open3d as o3d
-                # import random
-                # idcs = random.sample(range(dataset.__len__()), 10)
-                
-                for data in viz_loader:
-                    # print("Visualizing idx: %d" % idx)
 
-                    src, tgt, rotation_ab, translation_ab, rotation_ba, translation_ba, euler_ab, euler_ba = [d.cuda() for d in data]
-                    
-                    rotation_ab_pred, translation_ab_pred = net.predict(src, tgt)
-                    
+
+            for data in dl:
+                src, tgt, rotation_ab, translation_ab, rotation_ba, translation_ba, euler_ab, euler_ba = [d.cuda() for d in data]
+
+                # Here we apply the network to the src and tgt point cloud. 
+                # By default, this will run three iterations. 
+                rotation_ab_pred, translation_ab_pred = net.predict(src, tgt)
+                
+                # Here I use Open3D to visualize the point clouds before and 
+                # after transformation with the predicted transformation.
+                if args.visualize:
+                    R = rotation_ab_pred[0].cpu().numpy()
+                    Tr = translation_ab_pred.cpu().numpy()
+                    T = np.hstack((R, Tr.T))
+                    T = np.vstack((T, [0, 0, 0, 1]))
+
                     src_o3d = src[0].cpu().numpy().T
                     tgt_o3d = tgt[0].cpu().numpy().T
                     srcv = o3d.utility.Vector3dVector(src_o3d)
@@ -252,16 +272,21 @@ def main():
                     srcpcd.paint_uniform_color([0, 1, 0])
                     tgtpcd.paint_uniform_color([1, 0, 0])
                     o3d.visualization.draw_geometries([srcpcd, tgtpcd])
-                    #rotation_ab, translation_ab, rotation_ba, translation_ba, feature_disparity = net()
-                    print("hold")
+
+                    srcpcd = srcpcd.transform(T)
+                    o3d.visualization.draw_geometries([srcpcd, tgtpcd])
+
+                print("True transformation:")
+                print(rotation_ab)
+                print(translation_ab)
+                print("------------------------")
+                print("Predicted transformation:")
+                print(rotation_ab_pred)
+                print(translation_ab_pred)
+                print("------------------------")
+            
 
         
-    else:
-        raise Exception('Not implemented')
-
-    if not args.eval:
-        train(args, net, train_loader, test_loader)
-
     print('FINISH')
 
 
