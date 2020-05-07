@@ -1,8 +1,13 @@
 .vscode/
 data/
 __pycache__/
-checkpoints/
+checkpoints/*
+!checkpoints/demo/
+checkpoints/demo/*
+!checkpoints/demo/models
+!checkpoints/demo/args.txt
+!checkpoints/demo/log
+checkpoints/demo/models/*
+!checkpoints/demo/models/*.best.t7
 venv/
 ISSUES.md
-
-
