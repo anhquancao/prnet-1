@@ -9,10 +9,24 @@ Fork of PRNet
 > pip install torch numpy scipy h5py tqdm sklearn
 ```
 
-## Run
+## Train
 ```
 > python3 main.py --exp_name "demo" --svd_on_gpu 
 ```
+
+## Test
+This will load a single sample with the same dataloader as the original author has written.
+It then applies `PRNet.predict()` which runs the network three times on the source and traget network.
+
+```
+> python3 main.py --exp_name "demo" --eval 
+```
+
+The following will also visualize the point clouds before and after transformation with the predicted R and t.
+```
+> python3 main.py --exp_name "demo" --eval --visualize 
+```
+
 
 ## Output from `pip list`
 
