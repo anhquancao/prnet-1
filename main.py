@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import MultiStepLR
 from data import ModelNet40
+from data import Bunny
 import numpy as np
 from torch.utils.data import DataLoader
 from model import PRNet
@@ -124,8 +125,8 @@ def main():
                         help='Num of heads in multiheadedattention')
     parser.add_argument('--n_iters', type=int, default=3, metavar='N',
                         help='Num of iters to run inference')
-    parser.add_argument('--discount_factor', type=float, default=0.9, metavar='N',
-                        help='Discount factor to compute the loss')
+    parser.add_argument('--discount_factor', type=float, default=0.9,
+                        metavar='N', help='Discount factor to compute the loss')
     parser.add_argument('--n_ff_dims', type=int, default=1024, metavar='N',
                         help='Num of dimensions of fc in transformer')
     parser.add_argument('--n_keypoints', type=int, default=512, metavar='N',
@@ -148,28 +149,35 @@ def main():
                         help='learning rate (default: 0.001, 0.1 if using sgd)')
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
                         help='SGD momentum (default: 0.9)')
-    parser.add_argument('--no_cuda', action='store_true', default=False,
-                        help='enables CUDA training')
-    parser.add_argument('--seed', type=int, default=1234, metavar='S',
-                        help='random seed (default: 1)')
+    
+    # This isn't implemented.
+    # parser.add_argument('--no_cuda', action='store_true', default=False,
+    #                    help='enables CUDA training')
+
+    # parser.add_argument('--seed', type=int, default=1234, metavar='S',
+    #                    help='random seed')
+    parser.add_argument('--seed', type=int, metavar='S',
+                        help='random seed')
+
     parser.add_argument('--eval', action='store_true', default=False,
                         help='evaluate the model')
     parser.add_argument('--visualize', action='store_true', default=False,
                         help='Visualize the output of the network')
 
-    parser.add_argument('--cycle_consistency_loss', type=float, default=0.1, metavar='N',
-                        help='cycle consistency loss')
-    parser.add_argument('--feature_alignment_loss', type=float, default=0.1, metavar='N',
-                        help='feature alignment loss')
-    parser.add_argument('--gaussian_noise', type=bool, default=False, metavar='N',
-                        help='Wheter to add gaussian noise')
+    parser.add_argument('--cycle_consistency_loss', type=float, default=0.1,
+                        metavar='N', help='cycle consistency loss')
+    parser.add_argument('--feature_alignment_loss', type=float, default=0.1,
+                        metavar='N', help='feature alignment loss')
+    parser.add_argument('--gaussian_noise', type=bool, default=False,
+                        metavar='N', help='Wheter to add gaussian noise')
     parser.add_argument('--unseen', type=bool, default=False, metavar='N',
                         help='Wheter to test on unseen category')
     parser.add_argument('--n_points', type=int, default=1024, metavar='N',
                         help='Num of points to use')
-    parser.add_argument('--n_subsampled_points', type=int, default=768, metavar='N',
-                        help='Num of subsampled points to use')
-    parser.add_argument('--dataset', type=str, default='modelnet40', choices=['modelnet40'], metavar='N',
+    parser.add_argument('--n_subsampled_points', type=int, default=768,
+                        metavar='N', help='Num of subsampled points to use')
+    parser.add_argument('--dataset', type=str, default='modelnet40',
+                        choices=['modelnet40', 'bunny'], metavar='N',
                         help='dataset to use')
     parser.add_argument('--rot_factor', type=float, default=4, metavar='N',
                         help='Divided factor of rotation')
@@ -182,16 +190,12 @@ def main():
     # torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.enabled = False
 
-    # torch.backends.cudnn.deterministic = False
-    # torch.backends.cudnn
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
-    np.random.seed(args.seed)
+    if args.seed is not None:
+        torch.manual_seed(args.seed)
+        torch.cuda.manual_seed_all(args.seed)
+        np.random.seed(args.seed)
 
     _init_(args)
-
-    
-
 
 
     if args.model == 'prnet':
@@ -223,22 +227,34 @@ def main():
     if args.eval:
         net.eval()
         with torch.no_grad():
+            # If no model is specified, 
             if args.model_path is '':
                 model_path = 'checkpoints' + '/' + args.exp_name + '/models/model.best.t7'
             else:
                 model_path = args.model_path
             if not os.path.exists(model_path):
-                print("Can't find pretrained model. Did you specify one with '--exp_name'?")
+                print("Can't find pretrained model. Did you specify one with '--model_path'?")
                 return
 
             state = torch.load(model_path)
             net.set_state(state['model_state_dict'])
 
-            dl = DataLoader(ModelNet40(num_points=args.n_points,
-                                            num_subsampled_points=args.n_subsampled_points,
-                                            partition='test', gaussian_noise=args.gaussian_noise,
-                                            unseen=args.unseen, rot_factor=args.rot_factor),
-                                batch_size=1, shuffle=False, drop_last=False, num_workers=1)
+            if args.dataset == 'modelnet40':
+                dl = DataLoader(ModelNet40(num_points=args.n_points,
+                                                num_subsampled_points=args.n_subsampled_points,
+                                                partition='test', gaussian_noise=args.gaussian_noise,
+                                                unseen=args.unseen, rot_factor=args.rot_factor),
+                                    batch_size=1, shuffle=False, drop_last=False, num_workers=1)
+            elif args.dataset == 'bunny':
+                dl = DataLoader(
+                        Bunny(num_subsampled_points=args.n_subsampled_points,
+                            rot_factor=args.rot_factor
+                        ),
+                        batch_size=1,
+                        shuffle=False,
+                        drop_last=False,
+                        num_workers=1)
+
 
             if args.visualize:
                 # If you try to import Open3D while running "Remote 
@@ -252,8 +268,17 @@ def main():
 
                 # Here we apply the network to the src and tgt point cloud. 
                 # By default, this will run three iterations. 
-                rotation_ab_pred, translation_ab_pred = net.predict(src, tgt)
+                rotation_ab_pred, translation_ab_pred = net.predict(src, tgt, n_iters=6)
                 
+                print("True transformation:")
+                print(rotation_ab)
+                print(translation_ab)
+                print("------------------------")
+                print("Predicted transformation:")
+                print(rotation_ab_pred)
+                print(translation_ab_pred)
+                print("------------------------")
+
                 # Here I use Open3D to visualize the point clouds before and 
                 # after transformation with the predicted transformation.
                 if args.visualize:
@@ -276,17 +301,7 @@ def main():
                     srcpcd = srcpcd.transform(T)
                     o3d.visualization.draw_geometries([srcpcd, tgtpcd])
 
-                print("True transformation:")
-                print(rotation_ab)
-                print(translation_ab)
-                print("------------------------")
-                print("Predicted transformation:")
-                print(rotation_ab_pred)
-                print(translation_ab_pred)
-                print("------------------------")
-            
-
-        
+                
     print('FINISH')
 
 
