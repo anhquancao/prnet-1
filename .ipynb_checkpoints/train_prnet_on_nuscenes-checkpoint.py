@@ -197,10 +197,10 @@ def main(NB_EPOCHS, BATCH_SIZE,
             eulers_ab.append(euler_ab.cpu().numpy())
             
             if it % eval_every == 0:
-                avg_loss = total_loss / eval_every
-                avg_feature_alignment_loss = total_feature_alignment_loss / eval_every
-                avg_cycle_consistency_loss = total_cycle_consistency_loss / eval_every
-                avg_scale_consensus_loss = total_scale_consensus_loss / eval_every
+                avg_loss = total_loss / num_examples
+                avg_feature_alignment_loss = total_feature_alignment_loss / num_examples
+                avg_cycle_consistency_loss = total_cycle_consistency_loss / num_examples
+                avg_scale_consensus_loss = total_scale_consensus_loss / num_examples
 
                 rotations_ab = np.concatenate(rotations_ab, axis=0)
                 translations_ab = np.concatenate(translations_ab, axis=0)
