@@ -45,15 +45,17 @@ os.makedirs(BEST_CP_PATH, exist_ok=True)
 
 @ex.config
 def config():
-    NB_EPOCHS = 20
-    BATCH_SIZE = 8
-    N_FF_DIMS = 512
+    NB_EPOCHS = 10
+    BATCH_SIZE = 10 # The batch size must be bigger or equal to k (problem in the code)
+    N_FF_DIMS = 1024
     N_EMB_DIMS = 512
-    N_POINTS = 512
-    N_SUBSAMPLED_POINTS = 256
-    N_KEYPOINTS = 256
+    N_POINTS = 1024
+    N_SUBSAMPLED_POINTS = 512
+    N_KEYPOINTS = 512
     LEARNING_RATE = 0.001
     WEIGHT_DECAY = 1e-4
+    MODEL_PATH = ""
+    
 
 
 @ex.automain
@@ -62,7 +64,7 @@ def main(NB_EPOCHS, BATCH_SIZE,
          N_POINTS, N_SUBSAMPLED_POINTS, 
          N_KEYPOINTS, _run, 
          LEARNING_RATE, 
-         WEIGHT_DECAY):
+         WEIGHT_DECAY, MODEL_PATH):
     
     # Get the job id of the cluster in case
     # we want to redo the experiment.
@@ -92,7 +94,7 @@ def main(NB_EPOCHS, BATCH_SIZE,
         rot_factor=4,
         exp_name="prnet_train_nuscenes",
         n_subsampled_points=N_SUBSAMPLED_POINTS,
-        model_path="",
+        model_path=MODEL_PATH,
         num_workers=1,
         seed=2212
     )
@@ -116,9 +118,9 @@ def main(NB_EPOCHS, BATCH_SIZE,
     val_scenes = train_scenes[:20]
     train_scenes = train_scenes[20:]
 
-    train_dataset = LidarDataset(nusc, train_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=512)
-    val_dataset = LidarDataset(nusc, val_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=512)
-    test_dataset = LidarDataset(nusc, test_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=512)
+    train_dataset = LidarDataset(nusc, train_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=1024)
+    val_dataset = LidarDataset(nusc, val_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=1024)
+    test_dataset = LidarDataset(nusc, test_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=1024)
 
     train_loader = DataLoader(
         train_dataset, 
@@ -143,10 +145,25 @@ def main(NB_EPOCHS, BATCH_SIZE,
     
     # Train
     eval_every = 500
-    epoch_factor = args.epochs / 100.0
-    start_epoch = 0
-    info_test_best = None
-    it = 0
+    epoch_factor = args.epochs / 100.0        
+    
+    if args.model_path is not '':
+        assert os.path.exists(args.model_path), "Trying to resume, but model given doesn't exists."
+
+        state = torch.load(args.model_path)
+        net.set_state(state['model_state_dict'])
+        opt.load_state_dict(state['optimizer_state_dict'])
+        start_epoch = state['epoch']
+        info_test_best = state['info_test_best']
+        it = state['iteration']
+        print("Resuming from previous state: %s" % args.model_path)
+        print("Previous best: ")
+        net.logger.write(info_test_best, write=False) 
+    else:
+        start_epoch = 0
+        info_test_best = None
+        it = 0
+
     
     scheduler = MultiStepLR(opt,
                             milestones=[int(30*epoch_factor), int(60*epoch_factor), int(80*epoch_factor)],
@@ -286,7 +303,7 @@ def main(NB_EPOCHS, BATCH_SIZE,
 
                         path = os.path.join(BEST_CP_PATH, 'model.best.t7')
                         torch.save(savedict, path)
-                        ex.add_artifact(path)
+              
                     
         scheduler.step()
         gc.collect()

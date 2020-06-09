@@ -31,8 +31,6 @@ def _init_(args):
 
 def train(args, net, train_loader, test_loader):
 
-
-
     if args.use_sgd:
         print("Use SGD")
         opt = optim.SGD(net.parameters(), lr=args.lr * 100, momentum=args.momentum, weight_decay=1e-4)

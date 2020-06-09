@@ -46,8 +46,9 @@ def knn(x, k):
     xx = torch.sum(x ** 2, dim=1, keepdim=True)
     distance = -xx - inner - xx.transpose(2, 1).contiguous()
 
-    idx = distance.topk(k=k, dim=-1)[1]  # (batch_size, num_points, k)
-    return idx
+#     idx = distance.topk(k=k, dim=-1)[1]  # (batch_size, num_points, k)
+    _, indices = torch.sort(distance, dim=-1, descending=True)
+    return indices[:, :, :k]
 
 
 def get_graph_feature(x, k=20):
