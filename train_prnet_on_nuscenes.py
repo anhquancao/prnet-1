@@ -54,7 +54,7 @@ def config():
     N_KEYPOINTS = 512
     LEARNING_RATE = 0.001
     WEIGHT_DECAY = 1e-4
-    MODEL_PATH = ""
+    MODEL_PATH = os.path.join(CP_PATH, 'model.0.10500.t7')
     
 
 
