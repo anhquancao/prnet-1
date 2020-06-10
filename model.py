@@ -913,14 +913,15 @@ class PRNet(nn.Module):
 
 class Logger:
     def __init__(self, args):
-        self.path = 'checkpoints/' + args.exp_name
-        self.fw = open(self.path+'/log', 'a')
-        self.fw.write(str(args))
-        self.fw.write('\n')
-        self.fw.flush()
+        pass
+        # self.path = 'checkpoints/' + args.exp_name
+        # self.fw = open(self.path+'/log', 'a')
+        # self.fw.write(str(args))
+        # self.fw.write('\n')
+        # self.fw.flush()
         # print(str(args))
-        with open(os.path.join(self.path, 'args.txt'), 'w') as f:
-            json.dump(args.__dict__, f, indent=2)
+        # with open(os.path.join(self.path, 'args.txt'), 'w') as f:
+        #     json.dump(args.__dict__, f, indent=2)
 
     def write(self, info, write=True):
         arrow = info['arrow']
@@ -945,13 +946,13 @@ class Logger:
                (arrow, stage, epoch, loss, feature_alignment_loss, cycle_consistency_loss, scale_consensus_loss,
                 r_ab_mse, r_ab_rmse, r_ab_mae,
                 r_ab_r2_score, t_ab_mse, t_ab_rmse, t_ab_mae, t_ab_r2_score)
-        if write:
-            self.fw.write(text)
-            self.fw.flush()
+        # if write:
+        #     self.fw.write(text)
+        #     self.fw.flush()
         print(text)
 
-    def close(self):
-        self.fw.close()
+    # def close(self):
+    #     self.fw.close()
 
 
 if __name__ == '__main__':

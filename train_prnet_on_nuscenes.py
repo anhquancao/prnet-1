@@ -36,7 +36,7 @@ observer = MongoObserver.create(url='10.3.54.105:27017', db_name='qcao_scene_flo
 ex.observers.append(observer)
 ex.captured_out_filter = apply_backspaces_and_linefeeds  # for tqdm
 
-CP_PATH = '/root/local_storage/checkpoints/prnet_train_nuscenes/models'
+CP_PATH = '/root/no_backup/checkpoints/prnet_train_nuscenes/models'
 BEST_CP_PATH = '/root/workspace/checkpoints/prnet_train_nuscenes/models'
 
 os.makedirs(CP_PATH, exist_ok=True)
@@ -45,8 +45,8 @@ os.makedirs(BEST_CP_PATH, exist_ok=True)
 
 @ex.config
 def config():
-    NB_EPOCHS = 10
-    BATCH_SIZE = 10 # The batch size must be bigger or equal to k (problem in the code)
+    NB_EPOCHS = 5
+    BATCH_SIZE = 4
     N_FF_DIMS = 1024
     N_EMB_DIMS = 512
     N_POINTS = 1024
