@@ -469,7 +469,13 @@ class SVDHead(nn.Module):
             R = torch.zeros((src.size(0), 3, 3)).cuda()
             
             for i in range(src.size(0)):
-                u, s, v = torch.svd(H[i])
+                try:
+                    u, s, v = torch.svd(H[i])
+                except:                     
+                    u, s, v = torch.svd(H[i] + 1e-4 * H[i].mean()*torch.rand(l, h))
+                  
+                # torch.svd may have convergence issues for GPU and CPU.
+#                 u, s, v = torch.svd()
 
                 r = torch.matmul(v, u.transpose(1, 0)).contiguous()
                 r_det = torch.det(r).item()
