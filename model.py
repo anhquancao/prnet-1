@@ -472,7 +472,8 @@ class SVDHead(nn.Module):
                 try:
                     u, s, v = torch.svd(H[i])
                 except:                     
-                    u, s, v = torch.svd(H[i] + 1e-4 * H[i].mean()*torch.rand(l, h))
+                    print("SVD not converge")
+                    u, s, v = torch.svd(H[i] + 1e-8 * H[i].mean()*torch.rand(H[i].shape))
                   
                 # torch.svd may have convergence issues for GPU and CPU.
 #                 u, s, v = torch.svd()

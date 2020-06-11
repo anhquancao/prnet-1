@@ -124,7 +124,7 @@ def main(NB_EPOCHS, BATCH_SIZE,
     train_scenes = train_scenes[20:]
 
     train_dataset = LidarDataset(nusc, train_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=1024)
-    val_dataset = LidarDataset(nusc, val_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=1024)
+    val_dataset = LidarDataset(nusc, [val_scenes[0]], skip=(1, 1), n_rounds=1, get_colors=False, num_points=1024)
     test_dataset = LidarDataset(nusc, test_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=1024)
 
     train_loader = DataLoader(
@@ -170,9 +170,9 @@ def main(NB_EPOCHS, BATCH_SIZE,
         it = 0
 
     
-    scheduler = MultiStepLR(opt,
-                            milestones=[int(30*epoch_factor), int(60*epoch_factor), int(80*epoch_factor)],
-                            gamma=0.1)
+    # scheduler = MultiStepLR(opt,
+    #                         milestones=[int(30*epoch_factor), int(60*epoch_factor), int(80*epoch_factor)],
+    #                         gamma=0.1)
     
     
     for epoch in range(start_epoch, var.epochs):
@@ -310,7 +310,7 @@ def main(NB_EPOCHS, BATCH_SIZE,
                         torch.save(savedict, path)
               
                     
-        scheduler.step()
+        # scheduler.step()
         gc.collect()
 if __name__ == '__main__':
     main()
