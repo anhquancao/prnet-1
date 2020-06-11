@@ -42,7 +42,7 @@ ex.captured_out_filter = apply_backspaces_and_linefeeds  # for tqdm
 
 @ex.config
 def config():
-    NB_EPOCHS = 5
+    NB_EPOCHS = 20
     BATCH_SIZE = 4
     N_FF_DIMS = 1024
     N_EMB_DIMS = 512
@@ -123,8 +123,8 @@ def main(NB_EPOCHS, BATCH_SIZE,
     val_scenes = train_scenes[:20]
     train_scenes = train_scenes[20:]
 
-    train_dataset = LidarDataset(nusc, train_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=1024)
-    val_dataset = LidarDataset(nusc, val_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=1024)
+    train_dataset = LidarDataset(nusc, test_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=1024)
+    val_dataset = LidarDataset(nusc, test_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=1024)
     test_dataset = LidarDataset(nusc, test_scenes, skip=(1, 1), n_rounds=1, get_colors=False, num_points=1024)
 
     train_loader = DataLoader(
