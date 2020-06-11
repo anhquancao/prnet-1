@@ -29,6 +29,8 @@ from nuscenesHelper import LidarDataset
 from nuscenesHelper import NuScenesHelper
 from nuscenes.nuscenes import NuScenes, NuScenesExplorer
 
+
+
 # sacred config
 SETTINGS.CAPTURE_MODE = 'sys'  # for tqdm
 ex = Experiment("train_prnet_on_nuscenes")
@@ -36,11 +38,6 @@ observer = MongoObserver.create(url='10.3.54.105:27017', db_name='qcao_scene_flo
 ex.observers.append(observer)
 ex.captured_out_filter = apply_backspaces_and_linefeeds  # for tqdm
 
-CP_PATH = '/root/no_backup/checkpoints/prnet_train_nuscenes/models'
-BEST_CP_PATH = '/root/workspace/checkpoints/prnet_train_nuscenes/models'
-
-os.makedirs(CP_PATH, exist_ok=True)
-os.makedirs(BEST_CP_PATH, exist_ok=True)
 
 
 @ex.config
@@ -55,6 +52,7 @@ def config():
     LEARNING_RATE = 0.001
     WEIGHT_DECAY = 0
     MODEL_PATH = ""
+    EXP_NAME = ""
     
 
 
@@ -64,13 +62,20 @@ def main(NB_EPOCHS, BATCH_SIZE,
          N_POINTS, N_SUBSAMPLED_POINTS, 
          N_KEYPOINTS, _run, 
          LEARNING_RATE, 
-         WEIGHT_DECAY, MODEL_PATH):
+         WEIGHT_DECAY, MODEL_PATH, EXP_NAME):
     
     # Get the job id of the cluster in case
     # we want to redo the experiment.
     _run.meta_info['container_name'] = os.environ.get('CONTAINER_NAME', 'no name')
     
-    args = SimpleNamespace(
+    CP_PATH = "/root/no_backup/checkpoints/{}/models".format(EXP_NAME)
+    BEST_CP_PATH = "/root/workspace/checkpoints/{}/models".format(EXP_NAME)
+
+    os.makedirs(CP_PATH, exist_ok=True)
+    os.makedirs(BEST_CP_PATH, exist_ok=True)
+
+    
+    var = SimpleNamespace(
         emb_nn='dgcnn', 
         attention='transformer', 
         head='svd',
@@ -92,19 +97,19 @@ def main(NB_EPOCHS, BATCH_SIZE,
         feature_alignment_loss=0.1,
         n_points=N_POINTS,
         rot_factor=4,
-        exp_name="prnet_train_nuscenes",
+        exp_name=EXP_NAME,
         n_subsampled_points=N_SUBSAMPLED_POINTS,
         model_path=MODEL_PATH,
         num_workers=1,
         seed=2212
     )
     torch.backends.cudnn.deterministic = True
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
-    np.random.seed(args.seed)
+    torch.manual_seed(var.seed)
+    torch.cuda.manual_seed_all(var.seed)
+    np.random.seed(var.seed)
     
     
-    net = PRNet(args).cuda()
+    net = PRNet(var).cuda()
     opt = optim.Adam(net.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     
     # Load nuScenes dataset
@@ -124,39 +129,39 @@ def main(NB_EPOCHS, BATCH_SIZE,
 
     train_loader = DataLoader(
         train_dataset, 
-        batch_size = args.batch_size,
+        batch_size = var.batch_size,
         shuffle = True,
-        num_workers = args.num_workers
+        num_workers = var.num_workers
     )
 
     val_loader = DataLoader(
         val_dataset, 
-        batch_size = args.test_batch_size,
+        batch_size = var.test_batch_size,
         shuffle = False,
-        num_workers = args.num_workers
+        num_workers = var.num_workers
     )
 
     test_loader = DataLoader(
         test_dataset, 
-        batch_size = args.test_batch_size,
+        batch_size = var.test_batch_size,
         shuffle = False,
-        num_workers = args.num_workers
+        num_workers = var.num_workers
     )
     
     # Train
     eval_every = 500
-    epoch_factor = args.epochs / 100.0        
+    epoch_factor = var.epochs / 100.0        
     
-    if args.model_path is not '':
-        assert os.path.exists(args.model_path), "Trying to resume, but model given doesn't exists."
+    if var.model_path is not '':
+        assert os.path.exists(var.model_path), "Trying to resume, but model given doesn't exists."
 
-        state = torch.load(args.model_path)
+        state = torch.load(var.model_path)
         net.set_state(state['model_state_dict'])
         opt.load_state_dict(state['optimizer_state_dict'])
         start_epoch = state['epoch']
         info_test_best = state['info_test_best']
         it = state['iteration']
-        print("Resuming from previous state: %s" % args.model_path)
+        print("Resuming from previous state: %s" % var.model_path)
         print("Previous best: ")
         net.logger.write(info_test_best, write=False) 
     else:
@@ -170,7 +175,7 @@ def main(NB_EPOCHS, BATCH_SIZE,
                             gamma=0.1)
     
     
-    for epoch in range(start_epoch, args.epochs):
+    for epoch in range(start_epoch, var.epochs):
         net.train()
         total_loss = 0
         rotations_ab = []
